@@ -26,7 +26,6 @@ const PriorityEnum = z.union([
   z.literal(-1),
   z.literal(0),
   z.literal(1),
-  z.literal(2),
 ]);
 
 const SendNotificationInputSchema = z
@@ -43,8 +42,8 @@ const SendNotificationInputSchema = z
       .describe("Optional notification title. Defaults to the Pushover app name if omitted."),
     priority: PriorityEnum.default(0).describe(
       "Message priority: -2 (lowest, no notification), -1 (low, no sound/vibration), " +
-        "0 (normal, default), 1 (high, bypasses quiet hours), " +
-        "2 (emergency, repeats until acknowledged)."
+        "0 (normal, default), or 1 (high, bypasses quiet hours). Emergency priority " +
+        "(2) is not supported."
     ),
     device: z
       .string()
@@ -53,6 +52,16 @@ const SendNotificationInputSchema = z
       .describe(
         "Comma-separated device name(s) to target, or omit to send to all of the " +
           "user's/group's devices (e.g. 'iphone' or 'iphone,laptop')."
+      ),
+    ttl: z
+      .number()
+      .int("TTL must be a whole number of seconds")
+      .min(1, "TTL must be at least 1 second")
+      .max(2_419_200, "TTL must not exceed 2,419,200 seconds (4 weeks)")
+      .optional()
+      .describe(
+        "Notification time-to-live in seconds. Pushover discards the message if it " +
+          "cannot be delivered before this time."
       ),
   })
   .strict();
@@ -102,12 +111,7 @@ async function sendPushoverNotification(
 
   if (params.title) body.set("title", params.title);
   if (params.device) body.set("device", params.device);
-
-  // Emergency priority requires retry/expire parameters.
-  if (params.priority === 2) {
-    body.set("retry", "60");
-    body.set("expire", "3600");
-  }
+  if (params.ttl !== undefined) body.set("ttl", String(params.ttl));
 
   let response: Response;
   try {
@@ -145,11 +149,13 @@ server.registerTool(
 Args:
   - message (string, required): Notification body text, up to 1024 characters.
   - title (string, optional): Notification title, up to 250 characters. Defaults to the Pushover app's name if omitted.
-  - priority (-2 | -1 | 0 | 1 | 2, optional): Message priority. Default 0 (normal).
+  - priority (-2 | -1 | 0 | 1, optional): Message priority. Default 0 (normal).
       -2 = lowest (no notification), -1 = low (no sound/vibration), 0 = normal,
-      1 = high (bypasses quiet hours), 2 = emergency (repeats until acknowledged).
+      1 = high (bypasses quiet hours). Emergency priority (2) is not supported.
   - device (string, optional): Comma-separated device name(s) to target (e.g. "iphone" or "iphone,laptop").
       Omit to send to all devices for the configured user or group key.
+  - ttl (integer, optional): Time-to-live in seconds, from 1 to 2,419,200 (4 weeks).
+      Pushover discards the message if it cannot be delivered before this time.
 
 Returns: Confirmation text including the Pushover request ID, or an error message describing what went wrong.
 
