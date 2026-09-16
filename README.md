@@ -91,6 +91,10 @@ Because the release is distributed via GitHub rather than npm, install and run t
 }
 ```
 
+The package's `prepare` script builds the executable automatically when npm installs
+it from GitHub, so this command does not require a prebuilt `dist/` directory in the
+repository.
+
 If you want to pin to a specific tag or release, use a ref such as:
 
 ```json
@@ -104,7 +108,9 @@ If you are running from a local checkout instead of a GitHub release, use:
 "args": ["/absolute/path/to/pushover-mcp-server/dist/index.js"]
 ```
 
-This avoids depending on npm publication and works with the current GitHub-only release flow.
+Run `npm install` (or `npm run build`) in that checkout first so `dist/index.js`
+exists. The direct `node` invocation is for local development/checkouts; configured
+clients should normally use the GitHub `npx` form above.
 
 ## Development
 
