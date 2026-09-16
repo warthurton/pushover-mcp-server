@@ -4,21 +4,29 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Semantic release tag matching package.json (for example, v1.0.0)
+        required: true
+        type: string
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      id-token: write
+      contents: write
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.release.tag_name || github.sha }}
 
       - name: Setup Node.js (supported LTS)
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: "22"
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
           cache: npm
 
@@ -28,7 +36,29 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Publish package
-        run: npm publish --access public --provenance
+      - name: Validate release tag
+        run: |
+          expected_tag="v$(node -p "require('./package.json').version")"
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+            echo "Release tag must be a semantic version prefixed with v: $RELEASE_TAG" >&2
+            exit 1
+          fi
+          if [[ "$RELEASE_TAG" != "$expected_tag" ]]; then
+            echo "Release tag $RELEASE_TAG does not match package.json version $expected_tag" >&2
+            exit 1
+          fi
+
+      - name: Package
+        run: npm pack
+
+      - name: Upload package to published release
+        if: github.event_name == 'release'
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$RELEASE_TAG" ./*.tgz --clobber
+
+      - name: Create release and upload package
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$RELEASE_TAG" ./*.tgz --target "$GITHUB_SHA" --title "$RELEASE_TAG" --generate-notes
