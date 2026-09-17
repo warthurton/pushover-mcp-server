@@ -112,6 +112,18 @@ Run `npm install` (or `npm run build`) in that checkout first so `dist/index.js`
 exists. The direct `node` invocation is for local development/checkouts; configured
 clients should normally use the GitHub `npx` form above.
 
+## Health checks
+
+This server does not expose a custom health endpoint or health tool. Health is reported entirely through the standard MCP protocol methods that `@modelcontextprotocol/sdk`'s `McpServer` already implements over the stdio transport:
+
+- `initialize` — confirms the process is up and speaking MCP.
+- `tools/list` — confirms `pushover_send_notification` is registered and its schema is valid.
+- `ping` — a lightweight liveness check with no side effects.
+
+Orchestrators that health-check MCP servers this way — including litellm's MCP gateway, which polls `tools/list`/`ping` over the configured transport — can use this server directly with no extra configuration.
+
+If `PUSHOVER_TOKEN` or `PUSHOVER_USER` is missing, the process prints an error to stderr and exits with status `1` before the MCP transport connects. This is intentional: a misconfigured server fails immediately and visibly (connection refused/closed) rather than starting and reporting healthy while unable to deliver notifications. Note that a successful `tools/list`/`ping` only confirms the process and MCP handshake are healthy — it does not validate the Pushover token/user against the Pushover API, since that only happens when `pushover_send_notification` is actually called.
+
 ## Development
 
 ```bash
